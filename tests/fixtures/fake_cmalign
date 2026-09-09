@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# Fake stand-in for Infernal's cmalign, for integration-testing the
+# pipeline package without a real Infernal install. Doesn't actually
+# align anything -- just writes a minimal, well-formed Stockholm file at
+# the requested -o path so downstream cmbuild has something to read.
+import sys
+
+args = sys.argv[1:]
+out_path = args[args.index("-o") + 1]
+
+with open(out_path, "w") as f:
+    f.write("# STOCKHOLM 1.0\n")
+    f.write("seq1  ACGU\n")
+    f.write("#=GC SS_cons  ....\n")
+    f.write("//\n")
+
+print("[ok]", file=sys.stderr)

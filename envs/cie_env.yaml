@@ -1,0 +1,15 @@
+name: cie
+
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  - python=3.11
+  - go
+  - infernal>=1.1.4
+  - cmake
+  - make
+  - gcc
+  - easel

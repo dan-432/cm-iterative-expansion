@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+# Fake stand-in for Infernal's cmcalibrate, for integration-testing the
+# pipeline package without a real Infernal install. Calibration has no
+# observable output the pipeline reads, so this just succeeds.
+import sys
+
+print("[ok]", file=sys.stderr)

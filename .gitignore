@@ -1,0 +1,7 @@
+*._*~
+._*
+*.log
+/results/*
+*._DS_Store
+/bin
+.DS_Store

@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# Fake stand-in for Infernal's cmbuild, for integration-testing the
+# pipeline package without a real Infernal install. Doesn't build a real
+# model -- just writes a minimal placeholder CM file at the requested
+# output path (the last argument) so downstream cmcalibrate/cmsearch
+# calls have a file to point at.
+import sys
+
+args = sys.argv[1:]
+cm_path = args[-2]
+
+with open(cm_path, "w") as f:
+    f.write("INFERNAL1/a [fake]\n")
+    f.write("NAME     test_model\n")
+    f.write("//\n")
+
+print("[ok]", file=sys.stderr)

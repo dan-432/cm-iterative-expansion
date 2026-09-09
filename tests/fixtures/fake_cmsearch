@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+# Fake stand-in for Infernal's cmsearch, for integration-testing the
+# pipeline package's orchestration and convergence logic without a real
+# Infernal install. Deliberately ignores which CM file it was given (the
+# CM path changes every round) and instead scores every input sequence
+# deterministically from its own content, so the included-hit set is
+# stable round to round -- this is what lets a pipeline test reach
+# convergence by round 2 without needing to fake model quality actually
+# improving.
+import sys
+
+args = sys.argv[1:]
+tblout_path = args[args.index("--tblout") + 1]
+fasta_path = args[-1]
+
+
+def parse_fasta(path):
+    records = []
+    name, seq = None, []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith(">"):
+                if name is not None:
+                    records.append((name, "".join(seq)))
+                name, seq = line[1:].split()[0], []
+            else:
+                seq.append(line)
+    if name is not None:
+        records.append((name, "".join(seq)))
+    return records
+
+
+with open(tblout_path, "w") as out:
+    out.write("#target name accession query name accession mdl mdl-from mdl-to seq-from seq-to strand trunc pass gc bias score E-value inc description\n")
+    for name, seq in parse_fasta(fasta_path):
+        # Every sequence "hits" its own full length on the plus strand,
+        # with a fixed score derived from length alone -- simple and
+        # deterministic, not meant to resemble real CM scoring.
+        score = 20.0 + 0.1 * len(seq)
+        fields = [
+            name, "-", "test_model", "-", "cm", "1", str(len(seq)),
+            "1", str(len(seq)), "+", "no", "1", "0.50", "0.0",
+            f"{score:.2f}", "1e-10", "!", "synthetic_hit",
+        ]
+        out.write(" ".join(fields) + "\n")
+
+print("[ok]", file=sys.stderr)
