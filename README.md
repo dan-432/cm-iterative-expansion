@@ -1,12 +1,12 @@
 # cm-iterative-expansion
-Tool developed as part of my honours project. Used infernal tools to itertively expand a covariance model by aligning new sequences discovered by cmsearch on a provided sequence dataset
+Tool developed as part of my honours project. 
+Used infernal tools to itertively expand a covariance model by aligning new sequences discovered by cmsearch on a provided sequence dataset
 
 ## Relationship to cmsimile's `infernal` package
 
 `src/infernal/` here is a deliberate fork of the `infernal` package in
-[cmsimile](../cmsimile), not a shared dependency. The two tools use
-Infernal for different purposes and that difference shows up directly in
-what each `infernal` package needs to do:
+[cmsimile](https://github.com/dan-432/cm-simile), not a shared dependency. 
+The two tools use Infernal for different purposes and that difference shows up directly in what each `infernal` package needs to do:
 
 - **cmsimile** scores a fixed pool of sequences (including
   dinucleotide-shuffled nulls) against a CM for statistical comparison.
@@ -120,6 +120,26 @@ bin/cmiterativeexpansion \
   -evalue 0.01 \
   -cpu 8
 ```
+
+To run the expansion independently for every model in a multi-model CM file,
+use the batch wrapper. It extracts model names with `cmstat`, extracts each
+model with `cmfetch`, and gives each run its own output directory:
+
+```bash
+scripts/run_multi_cm.sh \
+   models.cm \
+   sequences.fasta \
+   cie_multi_out \
+   -max-rounds 10 \
+   -min-new-hits 20 \
+   -evalue 1e-5 \
+   -cpu 8
+```
+
+The wrapper writes `models.tsv` plus directories such as
+`cie_multi_out/model_001_model_name/round_01/`. Remaining arguments after the
+first three are passed to `cmiterativeexpansion`; do not pass `-cm`, `-fasta`,
+or `-out` there. Set `CMI_BINARY` when the executable is not on `PATH`.
 
 Run `bin/cmiterativeexpansion -h` for the full flag list, or pass
 `-quiet` to suppress the banner/progress output and just get the final
