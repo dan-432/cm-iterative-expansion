@@ -4,9 +4,17 @@
 # Parses a set of Stockholm multiple sequence alignment files and computes,
 # for every pair of files, two similarity measures:
 #
-#   1. n_shared_matrix   - number of sequence identifiers found in both files
-#   2. pct_overlap_matrix - mean percentage coordinate overlap of the hits
-#                           shared between the two files
+#   1. n_shared_matrix   - number of sequences found in both files
+#   2. pct_overlap_matrix - mean percentage coordinate overlap of the
+#                           sequences shared between the two files
+#
+# PER-SEQUENCE VERSION: sequences are matched between files on a sequence
+# key (the ID with its trailing "/<start>-<end>" removed). For extended IDs
+# this is "<cds_id>|<region_type>|<accession>:<region_start>-<region_end>(<strand>)",
+# i.e. the flanking region the hit came from, so each key is expected to
+# occur once per file and each shared key gives exactly one pair of
+# intervals - there is no best-match search. For simple IDs the key is the
+# accession, so such IDs can only be matched per accession.
 #
 # Assumes sequence IDs follow the common Infernal/HMMER convention:
 #   <accession>/<start>-<end>
@@ -74,7 +82,7 @@ read_stockholm_ids <- function(file) {
 #'                  region_start + rel_pos - 1
 #'
 #' @param ids character vector of Stockholm sequence IDs
-#' @return data.frame with columns id, base_id, start, end, strand.
+#' @return data.frame with columns id, key, base_id, start, end, strand.
 #'   start/end are NA if the ID matches neither pattern.
 parse_coordinates <- function(ids) {
   extended_pattern <- "^(.+)\\|(.+)\\|([^:]+):([0-9]+)-([0-9]+)\\(([+-])\\)/([0-9]+)-([0-9]+)$"
@@ -120,62 +128,63 @@ parse_coordinates <- function(ids) {
   lo <- pmin(start, end)
   hi <- pmax(start, end)
 
-  data.frame(id = ids, base_id = base_id, start = lo, end = hi,
+  # Sequence key: the ID without its trailing /<start>-<end>
+  key <- sub("/[0-9]+-[0-9]+$", "", ids)
+
+  data.frame(id = ids, key = key, base_id = base_id, start = lo, end = hi,
              strand = strand, stringsAsFactors = FALSE)
 }
 
 #' Load one Stockholm file into a parsed hit table.
+#'
+#' Each key should occur once per file. If a key occurs more than once
+#' (e.g. two hits in the same flanking region) the first is kept and a
+#' warning is raised, since a single pair of intervals per key is assumed.
 load_stockholm_hits <- function(file) {
-  parse_coordinates(read_stockholm_ids(file))
+  hits <- parse_coordinates(read_stockholm_ids(file))
+  dup <- duplicated(hits$key)
+  if (any(dup)) {
+    warning(sum(dup), " sequence(s) in ", basename(file),
+            " share a key with an earlier sequence; keeping the first of each.")
+    hits <- hits[!dup, , drop = FALSE]
+  }
+  hits
 }
 
 ## ---- 2. Pairwise comparison ------------------------------------------
 
-#' Percentage overlap between two closed intervals [s1,e1] and [s2,e2],
-#' expressed as intersection / union * 100.
+#' Percentage overlap between closed intervals [s1,e1] and [s2,e2],
+#' expressed as intersection / union * 100. Vectorised over its arguments.
 interval_overlap_pct <- function(s1, e1, s2, e2) {
-  inter <- max(0, min(e1, e2) - max(s1, s2) + 1)
-  union <- max(e1, e2) - min(s1, s2) + 1
-  if (union <= 0) return(NA_real_)
+  inter <- pmax(0, pmin(e1, e2) - pmax(s1, s2) + 1)
+  union <- pmax(e1, e2) - pmin(s1, s2) + 1
   100 * inter / union
 }
 
-#' Compare two files' hit tables.
+#' Compare two files' hit tables, sequence by sequence.
 #'
 #' @return list(n_shared = integer, pct_overlap = numeric or NA)
 compare_hit_tables <- function(hits_a, hits_b) {
-  shared_ids <- intersect(unique(hits_a$base_id), unique(hits_b$base_id))
-  n_shared <- length(shared_ids)
+  shared_keys <- intersect(hits_a$key, hits_b$key)
+  n_shared <- length(shared_keys)
 
   if (n_shared == 0) {
     return(list(n_shared = 0L, pct_overlap = NA_real_))
   }
 
-  overlaps <- vapply(shared_ids, function(bid) {
-    rows_a <- hits_a[hits_a$base_id == bid, , drop = FALSE]
-    rows_b <- hits_b[hits_b$base_id == bid, , drop = FALSE]
+  # Keys are unique within each table, so match() gives one row per key
+  a <- hits_a[match(shared_keys, hits_a$key), , drop = FALSE]
+  b <- hits_b[match(shared_keys, hits_b$key), , drop = FALSE]
 
-    # If either side lacks coordinates for this ID, no overlap can be computed
-    if (all(is.na(rows_a$start)) || all(is.na(rows_b$start))) {
-      return(NA_real_)
-    }
+  # Sequences without coordinates are counted as shared but cannot be scored
+  has_coords <- !is.na(a$start) & !is.na(b$start)
+  if (!any(has_coords)) {
+    return(list(n_shared = n_shared, pct_overlap = NA_real_))
+  }
 
-    # Multiple hits can share a base_id (e.g. multi-domain matches).
-    # Take the best (maximum) overlap between any pair of intervals -
-    # a natural "best match" pairing for that accession.
-    best <- -Inf
-    for (i in seq_len(nrow(rows_a))) {
-      for (j in seq_len(nrow(rows_b))) {
-        if (is.na(rows_a$start[i]) || is.na(rows_b$start[j])) next
-        pct <- interval_overlap_pct(rows_a$start[i], rows_a$end[i],
-                                     rows_b$start[j], rows_b$end[j])
-        if (!is.na(pct) && pct > best) best <- pct
-      }
-    }
-    if (is.infinite(best)) NA_real_ else best
-  }, numeric(1))
-
-  list(n_shared = n_shared, pct_overlap = mean(overlaps, na.rm = TRUE))
+  overlaps <- interval_overlap_pct(a$start[has_coords], a$end[has_coords],
+                                   b$start[has_coords], b$end[has_coords])
+  list(n_shared = n_shared, pct_overlap = mean(overlaps))
 }
 
 ## ---- 3. Build matrices across a set of files --------------------------
